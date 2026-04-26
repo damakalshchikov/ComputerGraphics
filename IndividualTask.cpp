@@ -16,7 +16,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
     const int CCX = 0, CCY = -50, CR = 50;
     const int N = 41;
-    const double PI = M_PI;
 
     const int n = 8;
     const int shift_x = 10;
@@ -64,7 +63,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             POINT arc[N + 1];
             for (int k = 0; k <= N; k++)
             {
-                double t = PI * k / N;
+                double t = M_PI * k / N;
                 double x = CCX + CR * cos(t);
                 double y = CCY + CR * sin(t);
                 arc[k].x = cx + (int)(x * cos_a - y * sin_a) + dx;
