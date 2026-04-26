@@ -31,7 +31,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_SIZE:
         sx = LOWORD(lParam);
         sy = HIWORD(lParam);
-        InvalidateRect(hWnd, NULL, TRUE);
         break;
 
     case WM_PAINT:
