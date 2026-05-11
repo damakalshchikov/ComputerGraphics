@@ -4,12 +4,12 @@
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 float v11, v12, v13, v21, v22, v23, v31, v32, v33, v43;
-float rho = 300.f, thetta = 75.f, phi = 30.f, ScreenDist = 500.f;
+float rho = 300, thetta = 75, phi = 30, ScreenDist = 500;
 float A, B, C, D, An, Bn, Cn;
 float xt[3], yt[3], zt[3];
 float Al, Bl, Cl, alpha;
 float th, ph, costh, cosph, sinth, sinph;
-float factor = atan(1.0f) / 45.f;
+float factor = atan(1.0) / 45.;
 
 PAINTSTRUCT ps;
 static HBRUSH hBrush;
@@ -68,8 +68,8 @@ POINT Perspective(float x, float y, float z)
     float ye = v12 * x + v22 * y + v32 * z;
     float ze = v13 * x + v23 * y + v33 * z + v43;
 
-    point.x = (LONG)(ScreenDist * xe / ze + 400.f);
-    point.y = (LONG)(ScreenDist * ye / ze + 300.f);
+    point.x = (LONG)(ScreenDist * xe / ze + 400);
+    point.y = (LONG)(ScreenDist * ye / ze + 300);
     return point;
 }
 
