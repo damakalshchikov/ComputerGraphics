@@ -10,3 +10,5 @@
 ## Второй семестр
 
 - [Лабораторная работа №1](https://github.com/damakalshchikov/computer-graphics/tree/lab1-sem2)
+- [Лабораторная работа №2](https://github.com/damakalshchikov/computer-graphics/tree/lab2-sem2)
+
