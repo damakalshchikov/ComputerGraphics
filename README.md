@@ -8,3 +8,5 @@
 - [Лабораторная работа №5](https://github.com/damakalshchikov/computer-graphics/tree/lab5-sem1)
 
 ## Второй семестр
+
+- [Лабораторная работа №1](https://github.com/damakalshchikov/computer-graphics/tree/lab1-sem2)
