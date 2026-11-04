@@ -1,239 +1,203 @@
-// Подключаем необходимые библиотеки для работы, объявляем прототип оконной функции WndProc и задаём имя класса окна WinName
+#ifndef UNICODE
+#define UNICODE
+#endif
+#ifndef _UNICODE
+#define _UNICODE
+#endif
+#define NOMINMAX
 #include <windows.h>
-#include <tchar.h>
+#include <cmath>
+#include <cstdint>
+#include <cwchar>
 #include <fstream>
-#include <string>
-#include <vector>
-LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
-TCHAR WinName[] = _T("MainFrame");
-// Функции записи и чтения образов
-// Запись фрагмента изображения по номеру (k)
-void SaveHDCToFile(HDC hdc, int k, int width, int height, const char *filename)
+
+const int CELL = 320;
+const int WIDTH = 3 * CELL;
+const int HEIGHT = 2 * CELL;
+
+HDC imageDC = nullptr;
+HBITMAP bitmap = nullptr;
+HGDIOBJ oldBitmap = nullptr;
+std::uint32_t *pixels = nullptr;
+
+void SaveBMP()
 {
-    // Создаем контекст устройства в памяти
-    HDC memDC = CreateCompatibleDC(hdc);
-    HBITMAP hBitmap = CreateCompatibleBitmap(hdc, width, height);
-    HBITMAP hOldBitmap = (HBITMAP)SelectObject(memDC, hBitmap);
-    // Копируем изображение из hdc в memDC
-    BitBlt(memDC, 0, 0, width, height, hdc, k * width, 0, SRCCOPY);
-    // Получаем информацию о битмапе
-    BITMAP bmp;
-    GetObject(hBitmap, sizeof(BITMAP), &bmp);
-    BITMAPINFOHEADER bi;
-    bi.biSize = sizeof(BITMAPINFOHEADER);
-    bi.biWidth = width;
-    bi.biHeight = -height; // Отрицательное значение для верхнего левого угла
+    GdiFlush();
+    BITMAPFILEHEADER bf{};
+    BITMAPINFOHEADER bi{};
+    bi.biSize = sizeof(bi);
+    bi.biWidth = WIDTH;
+    bi.biHeight = -HEIGHT;
     bi.biPlanes = 1;
-    bi.biBitCount = 32; // 32 бита на пиксель
+    bi.biBitCount = 32;
     bi.biCompression = BI_RGB;
-    bi.biSizeImage = 0;
-    bi.biXPelsPerMeter = 0;
-    bi.biYPelsPerMeter = 0;
-    bi.biClrUsed = 0;
-    bi.biClrImportant = 0;
-    // Выделяем память для пикселей
-    std::vector<BYTE> pixels(width * height * 4);
-    // Получаем пиксели
-    GetDIBits(memDC, hBitmap, 0, height, &pixels[0], (BITMAPINFO *)&bi, DIB_RGB_COLORS);
-    // Создаем заголовок BMP файла
-    BITMAPFILEHEADER bf;
-    bf.bfType = 0x4D42; // "BM"
-    bf.bfSize = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER) + pixels.size();
-    bf.bfReserved1 = 0;
-    bf.bfReserved2 = 0;
-    bf.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
-    // Сохраняем в файл
-    std::ofstream file(filename, std::ios::binary);
-    if (file)
-    {
-        file.write((char *)&bf, sizeof(BITMAPFILEHEADER));
-        file.write((char *)&bi, sizeof(BITMAPINFOHEADER));
-        file.write((char *)&pixels[0], pixels.size());
-        file.close();
-    }
-    // Освобождаем ресурсы
-    SelectObject(memDC, hOldBitmap);
-    DeleteObject(hBitmap);
-    DeleteDC(memDC);
+    bi.biSizeImage = WIDTH * HEIGHT * 4;
+    bf.bfType = 0x4D42;
+    bf.bfOffBits = sizeof(bf) + sizeof(bi);
+    bf.bfSize = bf.bfOffBits + bi.biSizeImage;
+    std::ofstream file("lab2.BMP", std::ios::binary);
+    file.write(reinterpret_cast<const char *>(&bf), sizeof(bf));
+    file.write(reinterpret_cast<const char *>(&bi), sizeof(bi));
+    file.write(reinterpret_cast<const char *>(pixels), bi.biSizeImage);
 }
-// Чтение образа из файла и вывод на экран
-bool LoadBMPToHDC(const char *filename, HDC hdc)
+
+void DrawImages()
 {
-    // Открываем файл
-    std::ifstream file(filename, std::ios::binary);
-    if (!file)
-    {
-        return false;
-    }
-    // Читаем заголовок BMP файла
-    BITMAPFILEHEADER bf;
-    file.read((char *)&bf, sizeof(BITMAPFILEHEADER));
-    if (bf.bfType != 0x4D42)
-    { // Проверяем, что это BMP файл
-        return false;
-    }
-    // Читаем информацию о битмапе
-    BITMAPINFOHEADER bi;
-    file.read((char *)&bi, sizeof(BITMAPINFOHEADER));
-    // Проверяем, что битмап имеет формат, который мы можем обработать
-    if (bi.biBitCount != 24 && bi.biBitCount != 32)
-    {
-        return false;
-    }
-    // Вычисляем размер изображения
-    int width = bi.biWidth;
-    int height = abs(bi.biHeight);
-    int bitCount = bi.biBitCount;
-    int rowSize = ((width * bitCount + 31) / 32) * 4; // Размер строки в байтах
-    int imageSize = rowSize * height;
-    // Выделяем память для пикселей
-    std::vector<BYTE> pixels(imageSize);
-    // Пропускаем заголовок и читаем пиксели
-    file.seekg(bf.bfOffBits, std::ios::beg);
-    file.read((char *)&pixels[0], imageSize);
-    // Создаем контекст устройства в памяти
-    HDC memDC = CreateCompatibleDC(hdc);
-    HBITMAP hBitmap = CreateCompatibleBitmap(hdc, width, height);
-    HBITMAP hOldBitmap = (HBITMAP)SelectObject(memDC, hBitmap);
-    // Устанавливаем информацию о битмапе
-    BITMAPINFO bmi;
-    bmi.bmiHeader = bi;
-    bmi.bmiColors[0].rgbBlue = 0;
-    bmi.bmiColors[0].rgbGreen = 0;
-    bmi.bmiColors[0].rgbRed = 0;
-    bmi.bmiColors[0].rgbReserved = 0;
-    // Устанавливаем пиксели в битмап
-    SetDIBits(memDC, hBitmap, 0, height, &pixels[0], &bmi, DIB_RGB_COLORS);
-    // Определение номера изображения
-    std::string firstChar(1, filename[0]);
-    int k = std::stoi(firstChar);
-    // Копируем битмап в hdc
-    BitBlt(hdc, (k - 1) * width, height, k * width, height * 2, memDC, 0, 0, SRCCOPY);
-    // Освобождаем ресурсы
-    SelectObject(memDC, hOldBitmap);
-    DeleteObject(hBitmap);
-    DeleteDC(memDC);
-    return true;
+    // Четыре М-образа пересечения двух кругов
+    for (int j = 0; j < CELL; ++j)
+        for (int i = 0; i < CELL; ++i)
+        {
+            double x = -1.5 + (i + 0.5) * 3.0 / CELL;
+            double y = 1.5 - (j + 0.5) * 3.0 / CELL;
+            double w1 = 1.0 - (x + 0.4) * (x + 0.4) - y * y;
+            double w2 = 0.25 - (x - 0.6) * (x - 0.6) - y * y;
+            double d = std::sqrt(w1 * w1 + w2 * w2);
+            double w = w1 + w2 - d;
+            if (d < 1e-12)
+                d = 1e-12;
+            double wx = -2 * (x + 0.4) - 2 * (x - 0.6) - (w1 * (-2 * (x + 0.4)) + w2 * (-2 * (x - 0.6))) / d;
+            double wy = -4 * y - (w1 * (-2 * y) + w2 * (-2 * y)) / d;
+            double n[4] = {-wx, -wy, 1.0, x * wx + y * wy - w};
+            double length = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2] + n[3] * n[3]);
+            for (int k = 0; k < 4; ++k)
+            {
+                int gray = static_cast<int>(127.5 * (1 + n[k] / length));
+                int px = (k % 3) * CELL + i;
+                int py = (k / 3) * CELL + j;
+                pixels[py * WIDTH + px] = (gray << 16) | (gray << 8) | gray;
+            }
+        }
+
+    // Нижние две ячейки
+    for (int j = 0; j < CELL; ++j)
+        for (int i = 0; i < 2 * CELL; ++i)
+        {
+            double x = -3.0 + (i + 0.5) * 6.0 / (2 * CELL);
+            double y = 1.5 - (j + 0.5) * 3.0 / CELL;
+            double w1 = 1.0 - (x + 0.4) * (x + 0.4) - y * y;
+            double w2 = 0.25 - (x - 0.6) * (x - 0.6) - y * y;
+            double w = w1 + w2 - std::sqrt(w1 * w1 + w2 * w2);
+            double t = 1.0 + w / 5.0;
+            if (t < 0)
+                t = 0;
+            if (t > 1)
+                t = 1;
+            pixels[(CELL + j) * WIDTH + CELL + i] =
+                w >= 0 ? 0x00FFFFFF : static_cast<int>(255 * t);
+        }
+
+    // Считаем площади
+    double area1 = 0, area2 = 0, areaIntersection = 0;
+    const int N = 2000;
+    const double h = 3.0 / N;
+    for (int j = 0; j < N; ++j)
+        for (int i = 0; i < N; ++i)
+        {
+            double x = -1.5 + (i + 0.5) * h;
+            double y = -1.5 + (j + 0.5) * h;
+            double w1 = 1.0 - (x + 0.4) * (x + 0.4) - y * y;
+            double w2 = 0.25 - (x - 0.6) * (x - 0.6) - y * y;
+            double w = w1 + w2 - std::sqrt(w1 * w1 + w2 * w2);
+            if (w1 >= 0)
+                area1 += h * h;
+            if (w2 >= 0)
+                area2 += h * h;
+            if (w >= 0)
+                areaIntersection += h * h;
+        }
+    HFONT font = CreateFontW(-16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                             DEFAULT_QUALITY, DEFAULT_PITCH, L"Arial");
+    HGDIOBJ oldFont = SelectObject(imageDC, font);
+    SetBkColor(imageDC, RGB(255, 255, 255));
+    SetTextColor(imageDC, RGB(0, 0, 0));
+    wchar_t text[128];
+    std::swprintf(text, 128, L"S первого круга: %.6f", area1);
+    TextOutW(imageDC, CELL + 12, CELL + 12, text, lstrlenW(text));
+    std::swprintf(text, 128, L"S второго круга: %.6f", area2);
+    TextOutW(imageDC, 2 * CELL + 12, CELL + 38, text, lstrlenW(text));
+    std::swprintf(text, 128, L"S пересечения: %.6f", areaIntersection);
+    TextOutW(imageDC, CELL + 140, HEIGHT - 28, text, lstrlenW(text));
+    GdiFlush();
+    SelectObject(imageDC, oldFont);
+    DeleteObject(font);
 }
-// Главная функция приложения
-int APIENTRY WinMain(HINSTANCE This, HINSTANCE Prev, LPSTR cmd,
-                     int mode)
+
+LRESULT CALLBACK WndProc(HWND window, UINT message, WPARAM wp, LPARAM lp)
 {
-    HWND hWnd;   // Дескриптор главного окна программы
-    MSG msg;     // Структура для хранения сообщений
-    WNDCLASS wc; // Класс окна
-    // Определение класса окна
-    wc.hInstance = This;
-    wc.lpszClassName = WinName;                 // Имя класса окна
-    wc.lpfnWndProc = WndProc;                   // Функция окна
-    wc.style = CS_HREDRAW | CS_VREDRAW;         // Стиль окна
-    wc.hIcon = LoadIcon(NULL, IDI_APPLICATION); // Стандартная иконка
-    wc.hCursor = LoadCursor(NULL, IDC_ARROW);   // Стандартный курсор
-    wc.lpszMenuName = NULL;                     // Нет меню
-    wc.cbClsExtra = 0;                          // Нет дополнительных данных класса
-    wc.cbWndExtra = 0;                          // Нет дополнительных данных окна
-    // Заполнение окна белым цветом
-    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1); // установка цвета фона
-    if (!RegisterClass(&wc))
-        return 0; // Регистрация класса окна
-    // Создание окна
-    hWnd = CreateWindow(WinName,                   // Имя класса окна
-                        _T("Работа с М-образами"), // Заголовок окна
-                        WS_OVERLAPPEDWINDOW,       // Стиль окна
-                        CW_USEDEFAULT,             // X
-                        CW_USEDEFAULT,             // Y
-                        CW_USEDEFAULT,             // Width
-                        CW_USEDEFAULT,             // Height
-                        HWND_DESKTOP,              // Дескриптор родительского окна
-                        NULL,                      // Нет меню
-                        This,                      // Дескриптор приложения
-                        NULL);                     // Дополнительной информации нет
-    ShowWindow(hWnd, mode);                        // Показать окно
-    // Цикл обработки сообщений
-    while (GetMessage(&msg, NULL, 0, 0)) // цикл получения сообщений
-    {
-        TranslateMessage(&msg); // Функция трансляции кодов нажатой клавиши
-        DispatchMessage(&msg);  // Посылает сообщение функции WndProc()
-    }
-    return 0; // при положительном завершении программы в главную функцию возвращается "0"
-}
-// Обработка сообщений окна
-// Оконная функция вызываемая операционной системой
-// и получает сообщения из очереди для данного приложения
-LRESULT CALLBACK WndProc(HWND hWnd, UINT message,
-                         WPARAM wParam, LPARAM lParam)
-{
-    int k;
-    int SIZE_X = 200;
-    int SIZE_Y = 200;
-    std::string name;
-    static HBITMAP hBitmap[4] = {};
-    static HDC hdcMem[4] = {};
-    static HGDIOBJ hOldBitmap[4] = {};
-    // Обработчик сообщений
     switch (message)
     {
     case WM_CREATE:
     {
-        // Получение контекста устройства для окна
-        HDC hdc = GetDC(hWnd);
-        for (k = 0; k < 4; k++)
+        HDC dc = GetDC(window);
+        imageDC = CreateCompatibleDC(dc);
+        BITMAPINFO info{};
+        info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        info.bmiHeader.biWidth = WIDTH;
+        info.bmiHeader.biHeight = -HEIGHT;
+        info.bmiHeader.biPlanes = 1;
+        info.bmiHeader.biBitCount = 32;
+        void *bits = nullptr;
+        bitmap = CreateDIBSection(dc, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+        ReleaseDC(window, dc);
+        if (!imageDC || !bitmap)
         {
-            // Создание совместимого контекста устройства
-            hdcMem[k] = CreateCompatibleDC(hdc);
-            // Создание Bitmap
-            hBitmap[k] = CreateCompatibleBitmap(hdc, SIZE_X, SIZE_Y);
-            // Выбор Bitmap в контекст устройства
-            hOldBitmap[k] = SelectObject(hdcMem[k], hBitmap[k]);
-            // Очистка Bitmap
-            PatBlt(hdcMem[k], 0, 0, SIZE_X, SIZE_Y, WHITENESS);
+            if (bitmap)
+                DeleteObject(bitmap);
+            if (imageDC)
+                DeleteDC(imageDC);
+            return -1;
         }
-        // Заливка четырёх образов. Проходим вложенным циклом по всем точкам квадрата
-        for (int i = 0; i < SIZE_X; i++)
-        {
-            for (int j = 0; j < SIZE_Y; j++)
-            {
-                // SetPixel красит одну точку (i, j) в указанный цвет, его задаёт цветовая RGB модель
-                // При смешении трёх составляющих (красный, зелёный, синий) получается итоговый цвет
-                SetPixel(hdcMem[0], i, j, RGB(255, 165, 0)); // Комбинация 255, 165, 0 даёт оранжевый цвет
-                SetPixel(hdcMem[1], i, j, RGB(128, 0, 128)); // Комбинация 128, 0, 128 даёт фиолетовый цвет
-                SetPixel(hdcMem[2], i, j, RGB(0, 128, 128)); // Комбинация 0, 128, 128 даёт бирюзовый цвет
-                SetPixel(hdcMem[3], i, j, RGB(255, 255, 0)); // Комбинация 255, 255, 0 даёт жёлтый цвет
-            }
-        }
-        // Освобождение контекста устройства
-        ReleaseDC(hWnd, hdc);
-        break;
+        pixels = static_cast<std::uint32_t *>(bits);
+        oldBitmap = SelectObject(imageDC, bitmap);
+        DrawImages();
+        SaveBMP();
+        return 0;
     }
     case WM_PAINT:
     {
-        PAINTSTRUCT ps;
-        HDC hdc = BeginPaint(hWnd, &ps);
-        for (k = 0; k < 4; k++)
-        {
-            // Копирование Bitmap на экран
-            BitBlt(hdc, k * SIZE_X, 5, (k + 1) * SIZE_X, SIZE_Y + 5, hdcMem[k], 0, 0, SRCCOPY);
-            // Сохранение образов в файл
-            name = std::to_string(k + 1) + ".BMP";
-            SaveHDCToFile(hdc, k, SIZE_X, SIZE_Y, name.c_str());
-            // Чтение образов из файла с именем формата "число.BMP" и вывод на hdc
-            LoadBMPToHDC(name.c_str(), hdc);
-        }
-        EndPaint(hWnd, &ps);
-        break;
+        PAINTSTRUCT ps{};
+        HDC dc = BeginPaint(window, &ps);
+        BitBlt(dc, 0, 0, WIDTH, HEIGHT, imageDC, 0, 0, SRCCOPY);
+        EndPaint(window, &ps);
+        return 0;
     }
     case WM_DESTROY:
-        for (k = 0; k < 4; k++)
-        {
-            // Очистка ресурсов
-            SelectObject(hdcMem[k], hOldBitmap[k]);
-            DeleteObject(hBitmap[k]);
-            DeleteDC(hdcMem[k]);
-        }
+        SelectObject(imageDC, oldBitmap);
+        DeleteObject(bitmap);
+        DeleteDC(imageDC);
         PostQuitMessage(0);
-        break;
+        return 0;
     default:
-        return DefWindowProc(hWnd, message, wParam, lParam);
+        return DefWindowProcW(window, message, wp, lp);
     }
-    return 0;
+}
+
+int WINAPI WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int show)
+{
+    WNDCLASSW wc{};
+    wc.lpfnWndProc = WndProc;
+    wc.hInstance = instance;
+    wc.lpszClassName = L"Lab2";
+    wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    wc.hbrBackground = GetSysColorBrush(COLOR_WINDOW);
+    if (!RegisterClassW(&wc))
+        return 1;
+    DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+    RECT rect{0, 0, WIDTH, HEIGHT};
+    AdjustWindowRect(&rect, style, FALSE);
+    HWND window = CreateWindowW(wc.lpszClassName, L"Лабораторная работа №2",
+                                style, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left,
+                                rect.bottom - rect.top, nullptr, nullptr, instance, nullptr);
+    if (!window)
+        return 1;
+    ShowWindow(window, show);
+    MSG msg{};
+    int result;
+    while ((result = GetMessageW(&msg, nullptr, 0, 0)) > 0)
+    {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+    return result < 0 ? 1 : static_cast<int>(msg.wParam);
 }
